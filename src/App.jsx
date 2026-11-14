@@ -13,9 +13,17 @@ export default function App() {
           <span>🪚 EasyCalc</span>
           <span className="brand-badge">US Woodshop</span>
         </div>
-        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          Fractional & Multi-Unit
-        </span>
+
+        <select
+          aria-label="App Mode"
+          className="mode-dropdown"
+          value={activeTab}
+          onChange={(e) => setActiveTab(e.target.value)}
+        >
+          <option value="calc">📏 Calculator</option>
+          <option value="bf">🪵 Board Feet</option>
+          <option value="chart">📐 Fraction Chart</option>
+        </select>
       </header>
 
       <main className="app-content">
@@ -23,30 +31,6 @@ export default function App() {
         {activeTab === 'bf' && <BoardFootEstimator />}
         {activeTab === 'chart' && <ReferenceChart />}
       </main>
-
-      <nav className="bottom-nav">
-        <button
-          type="button"
-          className={`nav-tab ${activeTab === 'calc' ? 'active' : ''}`}
-          onClick={() => setActiveTab('calc')}
-        >
-          <span>📏 Calculator</span>
-        </button>
-        <button
-          type="button"
-          className={`nav-tab ${activeTab === 'bf' ? 'active' : ''}`}
-          onClick={() => setActiveTab('bf')}
-        >
-          <span>🪵 Board Feet</span>
-        </button>
-        <button
-          type="button"
-          className={`nav-tab ${activeTab === 'chart' ? 'active' : ''}`}
-          onClick={() => setActiveTab('chart')}
-        >
-          <span>📐 Fraction Chart</span>
-        </button>
-      </nav>
     </>
   );
 }
