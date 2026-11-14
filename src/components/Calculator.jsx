@@ -401,7 +401,7 @@ export default function Calculator() {
       ? {
           transform: isTapeOpen
             ? `translateY(${Math.max(0, dragOffsetY)}px)`
-            : `translateY(calc(100% - 46px + ${dragOffsetY}px))`,
+            : `translateY(calc(100% - 2.875rem + ${dragOffsetY}px))`,
           transition: 'none',
         }
       : undefined;
