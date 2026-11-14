@@ -1,9 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <rect width="512" height="512" rx="112" fill="#181b22"/>
   <rect x="28" y="28" width="456" height="456" rx="88" fill="#12151b" stroke="#f59e0b" stroke-width="12" stroke-opacity="0.45"/>
-  <!-- Ruler markings -->
-  <path d="M96 140h320M136 140v36M196 140v24M256 140v44M316 140v24M376 140v36" stroke="#f59e0b" stroke-width="14" stroke-linecap="round"/>
-  <!-- Fraction 3/8" display -->
-  <text x="256" y="315" text-anchor="middle" font-family="monospace, sans-serif" font-weight="800" font-size="118" fill="#f59e0b">3/8"</text>
-  <text x="256" y="405" text-anchor="middle" font-family="sans-serif" font-weight="700" font-size="44" fill="#38bdf8" letter-spacing="4">EASYCALC</text>
+  <!-- Caliper beam -->
+  <rect x="72" y="150" width="368" height="64" rx="14" fill="#212630" stroke="#f59e0b" stroke-width="16"/>
+  <path d="M140 150v32M196 150v22M252 150v32M308 150v22M364 150v32" stroke="#f59e0b" stroke-width="12" stroke-linecap="round"/>
+  <!-- Fixed jaw -->
+  <path d="M72 150V96l48 54M72 214v166l64-76v-90" fill="#f59e0b" stroke="#f59e0b" stroke-width="12" stroke-linejoin="round"/>
+  <!-- Sliding jaw -->
+  <path d="M256 150V96l-48 54M248 214v76l64 76V214" fill="#38bdf8" stroke="#38bdf8" stroke-width="12" stroke-linejoin="round"/>
+  <rect x="236" y="140" width="88" height="84" rx="14" fill="#181b22" stroke="#38bdf8" stroke-width="16"/>
+  <!-- Label -->
+  <text x="256" y="442" text-anchor="middle" font-family="sans-serif" font-weight="800" font-size="38" fill="#f59e0b" letter-spacing="3">POCKET CALIPERS</text>
 </svg>

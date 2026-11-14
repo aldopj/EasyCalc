@@ -1,6 +1,6 @@
 {
-  "name": "EasyCalc — US Woodshop Calculator",
-  "short_name": "EasyCalc",
+  "name": "Pocket Calipers — US Woodshop Calculator",
+  "short_name": "Pocket Calipers",
   "description": "Fractional & Multi-Unit Woodworking Calculator, Notes, and Board Foot Estimator",
   "start_url": "./",
   "scope": "./",

@@ -68,9 +68,15 @@ body {
   align-items: center;
   gap: 0.5rem;
   font-weight: 700;
-  font-size: 1.1rem;
+  font-size: 1.08rem;
   color: var(--wood-light);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.2px;
+}
+
+.brand-caliper-icon {
+  width: 1.45rem;
+  height: 1.45rem;
+  flex-shrink: 0;
 }
 
 .brand-badge {
