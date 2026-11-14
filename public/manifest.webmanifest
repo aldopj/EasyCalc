@@ -1,0 +1,19 @@
+{
+  "name": "EasyCalc — US Woodshop Calculator",
+  "short_name": "EasyCalc",
+  "description": "Fractional & Multi-Unit Woodworking Calculator, Notes, and Board Foot Estimator",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f1115",
+  "theme_color": "#181b22",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
