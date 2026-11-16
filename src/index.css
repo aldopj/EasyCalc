@@ -342,6 +342,8 @@ body {
   justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
+  height: 1.75rem;
+  flex-shrink: 0;
 }
 
 .expr-input {
@@ -482,19 +484,42 @@ body {
   color: var(--wood-light);
   text-align: right;
   line-height: 1.15;
+  height: 2.3rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   margin-top: 0.125rem;
   font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+}
+
+.result-main-inner {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .result-sub {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
+  height: 1.45rem;
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 0.125rem;
   padding-top: 0.3rem;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.result-sub > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .approx-badge {
@@ -504,18 +529,31 @@ body {
   border-radius: 0.25rem;
   font-size: 0.68rem;
   font-weight: 600;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .conversions-strip {
   display: flex;
   justify-content: space-between;
+  align-items: center;
   gap: 0.375rem;
+  height: 1.4rem;
   margin-top: 0.125rem;
   padding-top: 0.3rem;
   border-top: 1px dashed rgba(255, 255, 255, 0.08);
   font-size: 0.72rem;
   color: #cbd5e1;
   font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.conversions-strip > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Quick Fraction Bar */
@@ -1066,6 +1104,7 @@ body {
   }
   .result-main {
     font-size: 1.55rem;
+    height: 1.85rem;
   }
   .calc-key {
     font-size: 1rem;

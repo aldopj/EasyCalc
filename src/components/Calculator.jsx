@@ -334,25 +334,69 @@ export default function Calculator({
     return /[+\-*/=(]$/.test(trimmed);
   }, [expression]);
 
+  const buildAllConversions = useCallback(
+    (qty) => {
+      if (!qty) {
+        return buildAllConversions({ value: 0, dimension: 1 });
+      }
+      if (qty.dimension === 0 || qty.dimension === 1) {
+        const lengthQty =
+          qty.dimension === 0
+            ? convertDimensionlessToActiveUnit(qty, baseUnit)
+            : qty;
+        const inches = lengthQty.value;
+        const ftIn = formatQuantity(lengthQty, 'ft-in', precision).formatted;
+        const fracIn = formatQuantity(
+          lengthQty,
+          'in-fractional',
+          precision
+        ).formatted;
+        const mm = `${(inches * 25.4).toFixed(1)} mm`;
+        const cm = `${(inches * 2.54).toFixed(2)} cm`;
+        return { items: [fracIn, ftIn, mm, cm] };
+      }
+      if (qty.dimension === 2) {
+        const val = qty.value;
+        return {
+          items: [
+            `${(val / 144).toFixed(2)} sq ft`,
+            `${val.toFixed(1)} sq in`,
+            `${(val * 6.4516).toFixed(1)} cm²`,
+            `${(val * 0.00064516).toFixed(3)} m²`,
+          ],
+        };
+      }
+      if (qty.dimension === 3) {
+        const val = qty.value;
+        return {
+          items: [
+            `${(val / 144).toFixed(2)} BF`,
+            `${val.toFixed(1)} cu in`,
+            `${(val * 16.387064).toFixed(0)} cm³`,
+            `${(val * 0.000016387064).toFixed(4)} m³`,
+          ],
+        };
+      }
+      return buildAllConversions({ value: 0, dimension: 1 });
+    },
+    [baseUnit, precision]
+  );
+
+  const emptyConversions = useMemo(
+    () => buildAllConversions({ value: 0, dimension: 1 }),
+    [buildAllConversions]
+  );
+
   const evaluateExpressionString = useCallback(
     (exprStr) => {
       const buildSuccess = (qty) => {
         const fmt = formatQuantity(qty, baseUnit, precision);
-        let allConversions = null;
-        if (qty.dimension === 1) {
-          const inches = qty.value;
-          const ftIn = formatQuantity(qty, 'ft-in', precision).formatted;
-          const fracIn = formatQuantity(qty, 'in-fractional', precision).formatted;
-          const mm = (inches * 25.4).toFixed(1) + ' mm';
-          const cm = (inches * 2.54).toFixed(2) + ' cm';
-          allConversions = { ftIn, fracIn, mm, cm };
-        }
         return {
           ok: true,
           qty,
           assignedVar: qty.assignedVar || null,
           ...fmt,
-          allConversions,
+          allConversions: buildAllConversions(qty),
         };
       };
 
@@ -361,7 +405,7 @@ export default function Calculator({
         formatted: '0"',
         exactDec: '0.0000 in',
         isApproximate: false,
-        allConversions: null,
+        allConversions: emptyConversions,
         assignedVar: null,
       };
 
@@ -395,7 +439,7 @@ export default function Calculator({
         };
       }
     },
-    [baseUnit, precision, variables]
+    [baseUnit, precision, variables, buildAllConversions, emptyConversions]
   );
 
   const evaluation = useMemo(
@@ -409,7 +453,7 @@ export default function Calculator({
         formatted: '0"',
         exactDec: '0.0000 in',
         isApproximate: false,
-        allConversions: null,
+        allConversions: emptyConversions,
         assignedVar: null,
       };
 
@@ -750,7 +794,7 @@ export default function Calculator({
               onClick={() => setIsVarPickerOpen((prev) => !prev)}
               title="Pick or set a named variable"
             >
-              <span>🏷️ {expectsOperand ? 'Pick Var' : 'Var'}</span>
+              <span>🏷️ Pick Var</span>
               <span style={{ fontSize: '0.62rem', opacity: 0.8 }}>▾</span>
             </button>
           </div>
@@ -851,21 +895,23 @@ export default function Calculator({
           )}
 
           <div className="result-main" data-testid="calc-result">
-            {!evaluation.ok && showCommitError ? (
-              <span style={{ fontSize: '1.05rem', color: 'var(--text-muted)' }}>
-                ⋯ {evaluation.error}
-              </span>
-            ) : (
-              <>
-                {displayedEval.assignedVar && (
-                  <span className="assign-preview-tag">
-                    {displayedEval.assignedVar} ←{' '}
-                  </span>
-                )}
-                {displayedEval.isApproximate ? '~ ' : ''}
-                {displayedEval.formatted}
-              </>
-            )}
+            <span className="result-main-inner">
+              {!evaluation.ok && showCommitError ? (
+                <span style={{ fontSize: '1.05rem', color: 'var(--text-muted)' }}>
+                  ⋯ {evaluation.error}
+                </span>
+              ) : (
+                <>
+                  {displayedEval.assignedVar && (
+                    <span className="assign-preview-tag">
+                      {displayedEval.assignedVar} ←{' '}
+                    </span>
+                  )}
+                  {displayedEval.isApproximate ? '~ ' : ''}
+                  {displayedEval.formatted}
+                </>
+              )}
+            </span>
           </div>
 
           <div className="result-sub">
@@ -876,22 +922,25 @@ export default function Calculator({
                 ? `Tap = to save [${displayedEval.assignedVar}] (${displayedEval.exactDec})`
                 : `Exact: ${displayedEval.exactDec}`}
             </span>
-            {displayedEval.isApproximate && (
-              <span className="approx-badge">Rounded to 1/{precision}"</span>
-            )}
+            <span
+              className="approx-badge"
+              aria-hidden={!displayedEval.isApproximate}
+              style={{
+                visibility: displayedEval.isApproximate ? 'visible' : 'hidden',
+              }}
+            >
+              Rounded to 1/{precision}"
+            </span>
           </div>
 
-          {displayedEval.allConversions && (
-            <div className="conversions-strip">
-              <span>{displayedEval.allConversions.fracIn}</span>
-              <span>•</span>
-              <span>{displayedEval.allConversions.ftIn}</span>
-              <span>•</span>
-              <span>{displayedEval.allConversions.mm}</span>
-              <span>•</span>
-              <span>{displayedEval.allConversions.cm}</span>
-            </div>
-          )}
+          <div className="conversions-strip">
+            {displayedEval.allConversions.items.map((item, index) => (
+              <React.Fragment key={index}>
+                {index > 0 && <span aria-hidden="true">•</span>}
+                <span>{item}</span>
+              </React.Fragment>
+            ))}
+          </div>
         </div>
 
         {/* Memoized Fast-Response Keypads */}
