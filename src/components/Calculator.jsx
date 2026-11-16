@@ -165,7 +165,7 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
         <FastButton className="calc-key" onActivate={() => onAppendToken('9')}>
           9
         </FastButton>
-        <FastButton className="calc-key op" onActivate={() => onAppendToken(' / ')}>
+        <FastButton className="calc-key op major-op" onActivate={() => onAppendToken(' / ')}>
           ÷
         </FastButton>
 
@@ -178,7 +178,7 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
         <FastButton className="calc-key" onActivate={() => onAppendToken('6')}>
           6
         </FastButton>
-        <FastButton className="calc-key op" onActivate={() => onAppendToken(' * ')}>
+        <FastButton className="calc-key op major-op" onActivate={() => onAppendToken(' * ')}>
           ×
         </FastButton>
 
@@ -191,7 +191,7 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
         <FastButton className="calc-key" onActivate={() => onAppendToken('3')}>
           3
         </FastButton>
-        <FastButton className="calc-key op" onActivate={() => onAppendToken(' - ')}>
+        <FastButton className="calc-key op major-op" onActivate={() => onAppendToken(' - ')}>
           −
         </FastButton>
 
@@ -205,7 +205,7 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
         <FastButton className="calc-key" onActivate={() => onAppendToken('.')}>
           .
         </FastButton>
-        <FastButton className="calc-key op" onActivate={() => onAppendToken(' + ')}>
+        <FastButton className="calc-key op major-op" onActivate={() => onAppendToken(' + ')}>
           +
         </FastButton>
 
@@ -220,7 +220,7 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
           by
         </FastButton>
         <FastButton className="calc-key equal" onActivate={onEvaluateCommit}>
-          =
+          Save
         </FastButton>
       </div>
     </>
@@ -255,6 +255,7 @@ export default function Calculator({
   const [isTapeOpen, setIsTapeOpen] = useState(false);
   const [isVarPickerOpen, setIsVarPickerOpen] = useState(false);
   const [customAssignInput, setCustomAssignInput] = useState('');
+  const hasCustomVarName = Boolean(customAssignInput.split('=')[0].trim());
   const [namingItemId, setNamingItemId] = useState(null);
   const [customTapeName, setCustomTapeName] = useState('');
 
@@ -806,16 +807,26 @@ export default function Calculator({
                   <span>Set Variable (e.g. Kerf = 1/8)</span>
                 </div>
                 <div className="pill-row">
-                  {VAR_PRESETS.map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      className="pill-btn"
-                      onClick={() => startVariableAssignment(preset)}
-                    >
-                      {preset} =
-                    </button>
-                  ))}
+                  {VAR_PRESETS.map((preset) => {
+                    const existingVar = formattedVariablesList.find(
+                      (v) => v.name.toLowerCase() === preset.toLowerCase()
+                    );
+                    return (
+                      <button
+                        key={preset}
+                        type="button"
+                        className="pill-btn var-preset-btn"
+                        onClick={() => startVariableAssignment(preset)}
+                      >
+                        <span className="var-preset-name">{preset} =</span>
+                        {existingVar && (
+                          <span className="var-preset-val">
+                            {existingVar.liveFormatted}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
                 <div className="custom-var-row">
                   <input
@@ -825,7 +836,7 @@ export default function Calculator({
                     value={customAssignInput}
                     onChange={(e) => setCustomAssignInput(e.target.value)}
                     onKeyDown={(e) => {
-                      if (e.key === 'Enter' && customAssignInput.trim()) {
+                      if (e.key === 'Enter' && hasCustomVarName) {
                         if (customAssignInput.includes('=')) {
                           const next = customAssignInput.trim();
                           expressionRef.current = next;
@@ -840,9 +851,10 @@ export default function Calculator({
                   />
                   <button
                     type="button"
-                    className="pill-btn active"
+                    className={`pill-btn ${hasCustomVarName ? 'active' : ''}`}
+                    disabled={!hasCustomVarName}
                     onClick={() => {
-                      if (!customAssignInput.trim()) return;
+                      if (!hasCustomVarName) return;
                       triggerHaptic(8);
                       if (customAssignInput.includes('=')) {
                         const next = customAssignInput.trim();
@@ -855,7 +867,7 @@ export default function Calculator({
                       }
                     }}
                   >
-                    Set =
+                    Add
                   </button>
                 </div>
               </div>
@@ -867,7 +879,7 @@ export default function Calculator({
               {!evaluation.ok && showCommitError
                 ? 'Complete the expression or tap ⌫'
                 : displayedEval.assignedVar
-                ? `Tap = to save [${displayedEval.assignedVar}] (${displayedEval.exactDec})`
+                ? `Tap Save to save [${displayedEval.assignedVar}] (${displayedEval.exactDec})`
                 : `Exact: ${displayedEval.exactDec}`}
             </span>
             <span className="result-main-inner">
@@ -985,7 +997,7 @@ export default function Calculator({
           <div className="sheet-list">
             {history.length === 0 ? (
               <div className="empty-tape">
-                No saved notes in <strong>{projectName}</strong> yet. Tap <strong>=</strong> on the calculator to save measurements to this project.
+                No saved notes in <strong>{projectName}</strong> yet. Tap <strong>Save</strong> on the calculator to save measurements to this project.
               </div>
             ) : (
               history.map((item, idx) => {
