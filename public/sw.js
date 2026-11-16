@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pocket-calipers-v5';
+const CACHE_NAME = 'pocket-calipers-v6';
 const ASSETS = ['./', './index.html', './manifest.webmanifest', './icon.svg'];
 
 self.addEventListener('install', (event) => {

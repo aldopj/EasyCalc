@@ -5,39 +5,12 @@ import {
   convertDimensionlessToActiveUnit,
 } from '../utils/parser';
 
-const STORAGE_KEY_NOTES = 'easycalc_notes_v1';
-const STORAGE_KEY_VARIABLES = 'easycalc_variables_v1';
+const STORAGE_KEY_NOTES = 'easycalc_notes_v2';
+const STORAGE_KEY_VARIABLES = 'easycalc_variables_v2';
 const STORAGE_KEY_SETTINGS = 'easycalc_settings_v1';
 
-const DEFAULT_VARIABLES = {
-  width: {
-    name: 'Width',
-    qty: { value: 57.75, dimension: 1 },
-    formatted: '57 3/4"',
-  },
-  kerf: {
-    name: 'Kerf',
-    qty: { value: 0.125, dimension: 1 },
-    formatted: '1/8"',
-  },
-};
-
-const DEFAULT_HISTORY = [
-  {
-    id: 1,
-    expr: '4\' 6" + 12 3/4"',
-    result: '57 3/4"',
-    qty: { value: 57.75, dimension: 1 },
-    varName: 'Width',
-  },
-  {
-    id: 2,
-    expr: '24" - 3/4" * 2',
-    result: '22 1/2"',
-    qty: { value: 22.5, dimension: 1 },
-    varName: null,
-  },
-];
+const DEFAULT_VARIABLES = {};
+const DEFAULT_HISTORY = [];
 
 function loadSavedSettings() {
   try {
@@ -53,9 +26,10 @@ function loadSavedSettings() {
 
 function loadSavedNotes() {
   try {
+    // Remove legacy v1 demo-seeded keys so existing installs start clean
+    localStorage.removeItem('easycalc_notes_v1');
     const raw = localStorage.getItem(STORAGE_KEY_NOTES);
     if (raw === null) {
-      localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(DEFAULT_HISTORY));
       return DEFAULT_HISTORY;
     }
     const parsed = JSON.parse(raw);
@@ -70,13 +44,14 @@ function loadSavedNotes() {
       );
     }
   } catch {
-    // Fallback to default if storage is unavailable or corrupted
+    // Fallback to empty if storage is unavailable or corrupted
   }
   return DEFAULT_HISTORY;
 }
 
 function loadSavedVariables(initialNotes) {
   try {
+    localStorage.removeItem('easycalc_variables_v1');
     const raw = localStorage.getItem(STORAGE_KEY_VARIABLES);
     let baseVars = DEFAULT_VARIABLES;
     if (raw !== null) {
@@ -84,8 +59,6 @@ function loadSavedVariables(initialNotes) {
       if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
         baseVars = parsed;
       }
-    } else {
-      localStorage.setItem(STORAGE_KEY_VARIABLES, JSON.stringify(DEFAULT_VARIABLES));
     }
     // Ensure any named items in notes are reflected in variables
     const synced = { ...baseVars };
@@ -344,7 +317,7 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
 });
 
 export default function Calculator() {
-  const [expression, setExpression] = useState('2\' 6 1/2" + 150mm + 3 3/8"');
+  const [expression, setExpression] = useState('');
   const [baseUnit, setBaseUnit] = useState(
     () => loadSavedSettings()?.baseUnit || 'in-fractional'
   );
