@@ -513,10 +513,28 @@ export default function Calculator({
         expressionRef.current = '';
         return '';
       }
-      const bracketMatch = trimmedEnd.match(/(\[[^\]]+\])$/);
-      const removed = bracketMatch
-        ? trimmedEnd.slice(0, trimmedEnd.length - bracketMatch[1].length)
-        : trimmedEnd.slice(0, -1);
+
+      let removed;
+      const bracketMatch = trimmedEnd.match(/(\[[^\]]*\]?)$/);
+      if (bracketMatch) {
+        removed = trimmedEnd.slice(
+          0,
+          trimmedEnd.length - bracketMatch[1].length
+        );
+      } else {
+        const identMatch = trimmedEnd.match(
+          /(^|[^a-zA-Z0-9_])([a-zA-Z_][a-zA-Z0-9_]*)$/
+        );
+        if (identMatch) {
+          removed = trimmedEnd.slice(
+            0,
+            trimmedEnd.length - identMatch[2].length
+          );
+        } else {
+          removed = trimmedEnd.slice(0, -1);
+        }
+      }
+
       const next = removed.trimEnd();
       expressionRef.current = next;
       return next;
@@ -788,7 +806,19 @@ export default function Calculator({
                 setExpression(e.target.value);
               }}
               onKeyDown={(e) => {
-                if (e.key === 'Enter') handleEvaluateCommit();
+                if (e.key === 'Enter') {
+                  handleEvaluateCommit();
+                } else if (e.key === 'Backspace') {
+                  const { selectionStart, selectionEnd, value } =
+                    e.currentTarget;
+                  if (
+                    selectionStart === selectionEnd &&
+                    selectionStart === value.length
+                  ) {
+                    e.preventDefault();
+                    handleBackspace();
+                  }
+                }
               }}
               placeholder="Tap numbers, Pick Var, or type kerf = 1/8"
             />
