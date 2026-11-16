@@ -1,9 +1,125 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
 import {
   parseAndEvaluate,
   formatQuantity,
   convertDimensionlessToActiveUnit,
 } from '../utils/parser';
+
+const STORAGE_KEY_NOTES = 'easycalc_notes_v1';
+const STORAGE_KEY_VARIABLES = 'easycalc_variables_v1';
+const STORAGE_KEY_SETTINGS = 'easycalc_settings_v1';
+
+const DEFAULT_VARIABLES = {
+  width: {
+    name: 'Width',
+    qty: { value: 57.75, dimension: 1 },
+    formatted: '57 3/4"',
+  },
+  kerf: {
+    name: 'Kerf',
+    qty: { value: 0.125, dimension: 1 },
+    formatted: '1/8"',
+  },
+};
+
+const DEFAULT_HISTORY = [
+  {
+    id: 1,
+    expr: '4\' 6" + 12 3/4"',
+    result: '57 3/4"',
+    qty: { value: 57.75, dimension: 1 },
+    varName: 'Width',
+  },
+  {
+    id: 2,
+    expr: '24" - 3/4" * 2',
+    result: '22 1/2"',
+    qty: { value: 22.5, dimension: 1 },
+    varName: null,
+  },
+];
+
+function loadSavedSettings() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object') return parsed;
+  } catch {
+    // Ignore storage read errors
+  }
+  return null;
+}
+
+function loadSavedNotes() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_NOTES);
+    if (raw === null) {
+      localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(DEFAULT_HISTORY));
+      return DEFAULT_HISTORY;
+    }
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (item) =>
+          item &&
+          typeof item.expr === 'string' &&
+          typeof item.result === 'string' &&
+          item.qty &&
+          typeof item.qty.value === 'number'
+      );
+    }
+  } catch {
+    // Fallback to default if storage is unavailable or corrupted
+  }
+  return DEFAULT_HISTORY;
+}
+
+function loadSavedVariables(initialNotes) {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_VARIABLES);
+    let baseVars = DEFAULT_VARIABLES;
+    if (raw !== null) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        baseVars = parsed;
+      }
+    } else {
+      localStorage.setItem(STORAGE_KEY_VARIABLES, JSON.stringify(DEFAULT_VARIABLES));
+    }
+    // Ensure any named items in notes are reflected in variables
+    const synced = { ...baseVars };
+    if (Array.isArray(initialNotes)) {
+      for (let i = initialNotes.length - 1; i >= 0; i--) {
+        const note = initialNotes[i];
+        if (note && note.varName && note.qty) {
+          const key = note.varName.toLowerCase();
+          synced[key] = {
+            name: note.varName,
+            qty: note.qty,
+            formatted: note.result,
+          };
+        }
+      }
+    }
+    return synced;
+  } catch {
+    return DEFAULT_VARIABLES;
+  }
+}
+
+function persistNotesAndVariables(notes, variables) {
+  try {
+    if (notes !== undefined) {
+      localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(notes));
+    }
+    if (variables !== undefined) {
+      localStorage.setItem(STORAGE_KEY_VARIABLES, JSON.stringify(variables));
+    }
+  } catch {
+    // Ignore quota or private-browsing storage errors
+  }
+}
 
 const BASE_UNITS = [
   { id: 'in-fractional', label: 'in (1/x)' },
@@ -53,41 +169,193 @@ const VAR_PRESETS = [
   'Reveal',
 ];
 
+/**
+ * Zero-latency touch button for mobile PWA keypads.
+ * Fires immediately on pointerdown so fast multi-finger or rapid-fire typing
+ * on Android never drops digits due to touch movement or double-tap heuristics,
+ * while ignoring the subsequent synthetic click and preserving keyboard accessibility.
+ */
+function FastButton({ onActivate, className, style, children, title, ariaLabel }) {
+  const lastPointerDownRef = useRef(0);
+
+  const handlePointerDown = (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    lastPointerDownRef.current = performance.now();
+    e.currentTarget.setAttribute('data-pressed', 'true');
+    onActivate(e);
+  };
+
+  const clearPressed = (e) => {
+    if (e.currentTarget.hasAttribute('data-pressed')) {
+      e.currentTarget.removeAttribute('data-pressed');
+    }
+  };
+
+  const handleClick = (e) => {
+    if (
+      lastPointerDownRef.current > 0 &&
+      performance.now() - lastPointerDownRef.current < 1000
+    ) {
+      return;
+    }
+    onActivate(e);
+  };
+
+  return (
+    <button
+      type="button"
+      className={className}
+      style={style}
+      title={title}
+      aria-label={ariaLabel}
+      onPointerDown={handlePointerDown}
+      onPointerUp={clearPressed}
+      onPointerCancel={clearPressed}
+      onPointerLeave={clearPressed}
+      onClick={handleClick}
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Memoized Keypad section so typing digits only updates the display card
+ * without re-rendering all 38 keypad buttons on every keystroke.
+ */
+const CalculatorKeypads = memo(function CalculatorKeypads({
+  onAppendToken,
+  onClear,
+  onBackspace,
+  onEvaluateCommit,
+}) {
+  return (
+    <>
+      {/* Dedicated Woodworker Fraction Keys */}
+      <div className="fraction-bar">
+        {QUICK_FRACTIONS.map((frac) => (
+          <FastButton
+            key={frac}
+            className="frac-key"
+            onActivate={() => onAppendToken(frac)}
+          >
+            {frac}
+          </FastButton>
+        ))}
+      </div>
+
+      {/* Unit Input Bar */}
+      <div className="unit-bar">
+        {UNITS.map((u) => (
+          <FastButton
+            key={u.label}
+            className="unit-key"
+            onActivate={() => onAppendToken(u.token)}
+          >
+            {u.label}
+          </FastButton>
+        ))}
+      </div>
+
+      {/* Main Number & Operator Keypad */}
+      <div className="keypad-grid">
+        <FastButton className="calc-key danger" onActivate={onClear}>
+          C
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('(')}>
+          (
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken(')')}>
+          )
+        </FastButton>
+        <FastButton className="calc-key op" onActivate={onBackspace}>
+          ⌫
+        </FastButton>
+
+        <FastButton className="calc-key" onActivate={() => onAppendToken('7')}>
+          7
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('8')}>
+          8
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('9')}>
+          9
+        </FastButton>
+        <FastButton className="calc-key op" onActivate={() => onAppendToken(' / ')}>
+          ÷
+        </FastButton>
+
+        <FastButton className="calc-key" onActivate={() => onAppendToken('4')}>
+          4
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('5')}>
+          5
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('6')}>
+          6
+        </FastButton>
+        <FastButton className="calc-key op" onActivate={() => onAppendToken(' * ')}>
+          ×
+        </FastButton>
+
+        <FastButton className="calc-key" onActivate={() => onAppendToken('1')}>
+          1
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('2')}>
+          2
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('3')}>
+          3
+        </FastButton>
+        <FastButton className="calc-key op" onActivate={() => onAppendToken(' - ')}>
+          −
+        </FastButton>
+
+        <FastButton
+          className="calc-key"
+          style={{ gridColumn: 'span 2' }}
+          onActivate={() => onAppendToken('0')}
+        >
+          0
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('.')}>
+          .
+        </FastButton>
+        <FastButton className="calc-key op" onActivate={() => onAppendToken(' + ')}>
+          +
+        </FastButton>
+
+        <FastButton
+          className="calc-key"
+          style={{ gridColumn: 'span 2' }}
+          onActivate={() => onAppendToken(' ')}
+        >
+          and
+        </FastButton>
+        <FastButton className="calc-key" onActivate={() => onAppendToken('/')}>
+          by
+        </FastButton>
+        <FastButton className="calc-key equal" onActivate={onEvaluateCommit}>
+          =
+        </FastButton>
+      </div>
+    </>
+  );
+});
+
 export default function Calculator() {
   const [expression, setExpression] = useState('2\' 6 1/2" + 150mm + 3 3/8"');
-  const [baseUnit, setBaseUnit] = useState('in-fractional');
-  const [precision, setPrecision] = useState(16);
+  const [baseUnit, setBaseUnit] = useState(
+    () => loadSavedSettings()?.baseUnit || 'in-fractional'
+  );
+  const [precision, setPrecision] = useState(
+    () => loadSavedSettings()?.precision || 16
+  );
 
-  // Named variables dictionary keyed by lowercase name
-  const [variables, setVariables] = useState({
-    width: {
-      name: 'Width',
-      qty: { value: 57.75, dimension: 1 },
-      formatted: '57 3/4"',
-    },
-    kerf: {
-      name: 'Kerf',
-      qty: { value: 0.125, dimension: 1 },
-      formatted: '1/8"',
-    },
-  });
-
-  const [history, setHistory] = useState([
-    {
-      id: 1,
-      expr: '4\' 6" + 12 3/4"',
-      result: '57 3/4"',
-      qty: { value: 57.75, dimension: 1 },
-      varName: 'Width',
-    },
-    {
-      id: 2,
-      expr: '24" - 3/4" * 2',
-      result: '22 1/2"',
-      qty: { value: 22.5, dimension: 1 },
-      varName: null,
-    },
-  ]);
+  const [history, setHistory] = useState(() => loadSavedNotes());
+  const [variables, setVariables] = useState(() =>
+    loadSavedVariables(loadSavedNotes())
+  );
 
   const [isTapeOpen, setIsTapeOpen] = useState(false);
   const [isVarPickerOpen, setIsVarPickerOpen] = useState(false);
@@ -101,6 +369,25 @@ export default function Calculator() {
   const didDragRef = useRef(false);
   const lastCommittedExprRef = useRef(null);
   const lastValidEvalRef = useRef(null);
+  const expressionRef = useRef(expression);
+  expressionRef.current = expression;
+
+  // Automatically persist notes & variables whenever they change
+  useEffect(() => {
+    persistNotesAndVariables(history, variables);
+  }, [history, variables]);
+
+  // Persist unit & precision settings
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY_SETTINGS,
+        JSON.stringify({ baseUnit, precision })
+      );
+    } catch {
+      // Ignore storage errors
+    }
+  }, [baseUnit, precision]);
 
   // Format stored variables using current base unit and precision
   const formattedVariablesList = useMemo(() => {
@@ -117,67 +404,74 @@ export default function Calculator() {
     return /[+\-*/=(]$/.test(trimmed);
   }, [expression]);
 
-  const evaluation = useMemo(() => {
-    const buildSuccess = (qty) => {
-      const fmt = formatQuantity(qty, baseUnit, precision);
-      let allConversions = null;
-      if (qty.dimension === 1) {
-        const inches = qty.value;
-        const ftIn = formatQuantity(qty, 'ft-in', precision).formatted;
-        const fracIn = formatQuantity(qty, 'in-fractional', precision).formatted;
-        const mm = (inches * 25.4).toFixed(1) + ' mm';
-        const cm = (inches * 2.54).toFixed(2) + ' cm';
-        allConversions = { ftIn, fracIn, mm, cm };
-      }
-      return {
-        ok: true,
-        qty,
-        assignedVar: qty.assignedVar || null,
-        ...fmt,
-        allConversions,
-      };
-    };
-
-    const emptyState = {
-      ok: true,
-      formatted: '0"',
-      exactDec: '0.0000 in',
-      isApproximate: false,
-      allConversions: null,
-      assignedVar: null,
-    };
-
-    if (!expression.trim()) {
-      lastValidEvalRef.current = emptyState;
-      return emptyState;
-    }
-    try {
-      const qty = parseAndEvaluate(expression, baseUnit, variables);
-      const res = buildSuccess(qty);
-      lastValidEvalRef.current = res;
-      return res;
-    } catch (err) {
-      // Try evaluating the completed prefix before trailing operators/incomplete fraction slash while typing
-      let previewEval = lastValidEvalRef.current || emptyState;
-      const stripped = expression
-        .replace(/(\s+\d+\/?\s*|\s*[+\-*/×÷−(]+\s*)$/, '')
-        .trim();
-      if (stripped && stripped !== expression.trim()) {
-        try {
-          const partialQty = parseAndEvaluate(stripped, baseUnit, variables);
-          previewEval = buildSuccess(partialQty);
-          lastValidEvalRef.current = previewEval;
-        } catch {
-          // Keep previous valid evaluation
+  const evaluateExpressionString = useCallback(
+    (exprStr) => {
+      const buildSuccess = (qty) => {
+        const fmt = formatQuantity(qty, baseUnit, precision);
+        let allConversions = null;
+        if (qty.dimension === 1) {
+          const inches = qty.value;
+          const ftIn = formatQuantity(qty, 'ft-in', precision).formatted;
+          const fracIn = formatQuantity(qty, 'in-fractional', precision).formatted;
+          const mm = (inches * 25.4).toFixed(1) + ' mm';
+          const cm = (inches * 2.54).toFixed(2) + ' cm';
+          allConversions = { ftIn, fracIn, mm, cm };
         }
-      }
-      return {
-        ok: false,
-        error: err.message,
-        preview: previewEval,
+        return {
+          ok: true,
+          qty,
+          assignedVar: qty.assignedVar || null,
+          ...fmt,
+          allConversions,
+        };
       };
-    }
-  }, [expression, baseUnit, precision, variables]);
+
+      const emptyState = {
+        ok: true,
+        formatted: '0"',
+        exactDec: '0.0000 in',
+        isApproximate: false,
+        allConversions: null,
+        assignedVar: null,
+      };
+
+      if (!exprStr.trim()) {
+        lastValidEvalRef.current = emptyState;
+        return emptyState;
+      }
+      try {
+        const qty = parseAndEvaluate(exprStr, baseUnit, variables);
+        const res = buildSuccess(qty);
+        lastValidEvalRef.current = res;
+        return res;
+      } catch (err) {
+        let previewEval = lastValidEvalRef.current || emptyState;
+        const stripped = exprStr
+          .replace(/(\s+\d+\/?\s*|\s*[+\-*/×÷−(]+\s*)$/, '')
+          .trim();
+        if (stripped && stripped !== exprStr.trim()) {
+          try {
+            const partialQty = parseAndEvaluate(stripped, baseUnit, variables);
+            previewEval = buildSuccess(partialQty);
+            lastValidEvalRef.current = previewEval;
+          } catch {
+            // Keep previous valid evaluation
+          }
+        }
+        return {
+          ok: false,
+          error: err.message,
+          preview: previewEval,
+        };
+      }
+    },
+    [baseUnit, precision, variables]
+  );
+
+  const evaluation = useMemo(
+    () => evaluateExpressionString(expression),
+    [expression, evaluateExpressionString]
+  );
 
   const displayedEval = evaluation.ok
     ? evaluation
@@ -189,179 +483,234 @@ export default function Calculator() {
         assignedVar: null,
       };
 
-  const appendToken = (token) => {
+  const appendToken = useCallback((token) => {
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
     setIsVarPickerOpen(false);
     setExpression((prev) => {
-      if (/^\d+\/\d+$/.test(token) && /\d$/.test(prev)) {
-        return `${prev} ${token}`;
-      }
-      return `${prev}${token}`;
+      const next =
+        /^\d+\/\d+$/.test(token) && /\d$/.test(prev)
+          ? `${prev} ${token}`
+          : `${prev}${token}`;
+      expressionRef.current = next;
+      return next;
     });
-  };
+  }, []);
 
-  const insertVariableIntoExpression = (varName) => {
+  const insertVariableIntoExpression = useCallback((varName) => {
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
     setExpression((prev) => {
       const trimmed = prev.trimEnd();
-      if (!trimmed) return `[${varName}]`;
-      if (/[+\-*/=(]$/.test(trimmed)) {
-        return `${trimmed} [${varName}]`;
-      }
-      return `${prev} + [${varName}]`;
+      let next;
+      if (!trimmed) next = `[${varName}]`;
+      else if (/[+\-*/=(]$/.test(trimmed)) next = `${trimmed} [${varName}]`;
+      else next = `${prev} + [${varName}]`;
+      expressionRef.current = next;
+      return next;
     });
     setIsVarPickerOpen(false);
-  };
+  }, []);
 
-  const startVariableAssignment = (varName) => {
+  const startVariableAssignment = useCallback((varName) => {
     const clean = varName.trim().replace(/\s+/g, '_');
     if (!clean) return;
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
     setExpression((prev) => {
       const trimmed = prev.trim();
-      // If there's already a valid number/expression without '=', wrap it as `varName = <prev>`
-      if (trimmed && !trimmed.includes('=')) {
-        return `${clean} = ${trimmed}`;
-      }
-      return `${clean} = `;
+      const next =
+        trimmed && !trimmed.includes('=')
+          ? `${clean} = ${trimmed}`
+          : `${clean} = `;
+      expressionRef.current = next;
+      return next;
     });
     setCustomAssignInput('');
     setIsVarPickerOpen(false);
-  };
+  }, []);
 
-  const handleBackspace = () => {
+  const handleBackspace = useCallback(() => {
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
     setExpression((prev) => {
-      // Delete an entire [VarName] pill in one tap
       const bracketMatch = prev.match(/(\s*\[[^\]]+\]\s*)$/);
-      if (bracketMatch) {
-        return prev.slice(0, prev.length - bracketMatch[1].length);
-      }
-      return prev.slice(0, -1);
+      const next = bracketMatch
+        ? prev.slice(0, prev.length - bracketMatch[1].length)
+        : prev.slice(0, -1);
+      expressionRef.current = next;
+      return next;
     });
-  };
+  }, []);
 
-  const handleClear = () => {
+  const handleClear = useCallback(() => {
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
+    expressionRef.current = '';
     setExpression('');
     setIsVarPickerOpen(false);
-  };
+  }, []);
 
   const assignVariableToHistoryItem = (itemId, rawName) => {
     const cleanName = rawName.trim().replace(/\s+/g, '_');
     if (!cleanName) return;
 
-    setHistory((prev) =>
-      prev.map((item) => {
-        if (item.id === itemId) {
-          const storedQty =
-            item.qty.dimension === 0
-              ? convertDimensionlessToActiveUnit(item.qty, baseUnit)
-              : item.qty;
-          setVariables((vPrev) => ({
-            ...vPrev,
-            [cleanName.toLowerCase()]: {
-              name: cleanName,
-              qty: storedQty,
-              formatted: item.result,
-            },
-          }));
-          return { ...item, varName: cleanName };
-        }
-        return item;
-      })
+    const targetItem = history.find((item) => item.id === itemId);
+    if (!targetItem) return;
+
+    const oldVarName = targetItem.varName;
+    const storedQty =
+      targetItem.qty.dimension === 0
+        ? convertDimensionlessToActiveUnit(targetItem.qty, baseUnit)
+        : targetItem.qty;
+
+    const nextHistory = history.map((item) =>
+      item.id === itemId ? { ...item, varName: cleanName } : item
     );
+
+    const nextVariables = { ...variables };
+    if (
+      oldVarName &&
+      oldVarName.toLowerCase() !== cleanName.toLowerCase()
+    ) {
+      const oldKey = oldVarName.toLowerCase();
+      const stillUsed = nextHistory.some(
+        (i) => i.varName && i.varName.toLowerCase() === oldKey
+      );
+      if (!stillUsed) {
+        delete nextVariables[oldKey];
+      }
+    }
+
+    nextVariables[cleanName.toLowerCase()] = {
+      name: cleanName,
+      qty: storedQty,
+      formatted: targetItem.result,
+    };
+
+    setHistory(nextHistory);
+    setVariables(nextVariables);
+    persistNotesAndVariables(nextHistory, nextVariables);
     setNamingItemId(null);
     setCustomTapeName('');
   };
 
   const deleteHistoryItem = (itemId) => {
-    setHistory((prev) => {
-      const target = prev.find((i) => i.id === itemId);
-      const remaining = prev.filter((i) => i.id !== itemId);
-      if (target && target.varName) {
-        const key = target.varName.toLowerCase();
-        const stillUsed = remaining.some(
-          (i) => i.varName && i.varName.toLowerCase() === key
-        );
-        if (!stillUsed) {
-          setVariables((vPrev) => {
-            const next = { ...vPrev };
-            delete next[key];
-            return next;
-          });
-        }
+    const target = history.find((i) => i.id === itemId);
+    const remaining = history.filter((i) => i.id !== itemId);
+    let nextVariables = variables;
+
+    if (target && target.varName) {
+      const key = target.varName.toLowerCase();
+      const stillUsed = remaining.some(
+        (i) => i.varName && i.varName.toLowerCase() === key
+      );
+      if (!stillUsed && variables[key]) {
+        nextVariables = { ...variables };
+        delete nextVariables[key];
+        setVariables(nextVariables);
       }
-      return remaining;
-    });
+    }
+
+    setHistory(remaining);
+    persistNotesAndVariables(remaining, nextVariables);
+
     if (namingItemId === itemId) {
       setNamingItemId(null);
     }
     lastCommittedExprRef.current = null;
   };
 
+  const clearAllHistory = () => {
+    const nextVariables = { ...variables };
+    history.forEach((item) => {
+      if (item.varName) {
+        delete nextVariables[item.varName.toLowerCase()];
+      }
+    });
+    setHistory([]);
+    setVariables(nextVariables);
+    persistNotesAndVariables([], nextVariables);
+    setNamingItemId(null);
+    lastCommittedExprRef.current = null;
+  };
+
   const handleEvaluateCommit = () => {
-    if (!expression.trim()) return;
-    if (!evaluation.ok) {
+    const currentExpr = expressionRef.current;
+    if (!currentExpr.trim()) return;
+    const currentEval =
+      currentExpr === expression
+        ? evaluation
+        : evaluateExpressionString(currentExpr);
+
+    if (!currentEval.ok) {
       setShowCommitError(true);
       return;
     }
     setShowCommitError(false);
-    if (evaluation.ok && expression.trim()) {
-      const currentTrimmed = expression.trim();
-      const resultTrimmed = evaluation.formatted.trim();
 
-      // Do not add to Notes if hitting '=' again with no change to the expression
-      const isUnchangedRepeat =
-        lastCommittedExprRef.current === currentTrimmed ||
-        (history[0] &&
-          (history[0].expr.trim() === currentTrimmed ||
-            (history[0].result.trim() === currentTrimmed &&
-              !evaluation.assignedVar)));
+    const currentTrimmed = currentExpr.trim();
+    const resultTrimmed = currentEval.formatted.trim();
 
-      if (isUnchangedRepeat) {
-        setIsVarPickerOpen(false);
-        return;
-      }
+    // Do not add to Notes if hitting '=' again with no change to the expression
+    const isUnchangedRepeat =
+      lastCommittedExprRef.current === currentTrimmed ||
+      (history[0] &&
+        (history[0].expr.trim() === currentTrimmed ||
+          (history[0].result.trim() === currentTrimmed &&
+            !currentEval.assignedVar)));
 
-      const storedQty =
-        evaluation.qty.dimension === 0
-          ? convertDimensionlessToActiveUnit(evaluation.qty, baseUnit)
-          : evaluation.qty;
-
-      const assignedName = evaluation.assignedVar || null;
-
-      if (assignedName) {
-        setVariables((prev) => ({
-          ...prev,
-          [assignedName.toLowerCase()]: {
-            name: assignedName,
-            qty: storedQty,
-            formatted: evaluation.formatted,
-          },
-        }));
-      }
-
-      setHistory((prev) => [
-        {
-          id: Date.now(),
-          expr: expression,
-          result: evaluation.formatted,
-          qty: storedQty,
-          varName: assignedName,
-        },
-        ...prev.slice(0, 29),
-      ]);
-      lastCommittedExprRef.current = resultTrimmed;
-      setExpression(evaluation.formatted);
+    if (isUnchangedRepeat) {
       setIsVarPickerOpen(false);
+      return;
     }
+
+    const storedQty =
+      currentEval.qty.dimension === 0
+        ? convertDimensionlessToActiveUnit(currentEval.qty, baseUnit)
+        : currentEval.qty;
+
+    const assignedName = currentEval.assignedVar || null;
+
+    let nextVariables = variables;
+    if (assignedName) {
+      nextVariables = {
+        ...variables,
+        [assignedName.toLowerCase()]: {
+          name: assignedName,
+          qty: storedQty,
+          formatted: currentEval.formatted,
+        },
+      };
+      setVariables(nextVariables);
+    }
+
+    const nextHistory = [
+      {
+        id: Date.now(),
+        expr: currentExpr,
+        result: currentEval.formatted,
+        qty: storedQty,
+        varName: assignedName,
+      },
+      ...history.slice(0, 199),
+    ];
+
+    setHistory(nextHistory);
+    persistNotesAndVariables(nextHistory, nextVariables);
+
+    lastCommittedExprRef.current = resultTrimmed;
+    expressionRef.current = currentEval.formatted;
+    setExpression(currentEval.formatted);
+    setIsVarPickerOpen(false);
   };
+
+  const evaluateCommitRef = useRef(handleEvaluateCommit);
+  evaluateCommitRef.current = handleEvaluateCommit;
+
+  const stableEvaluateCommit = useCallback(() => {
+    evaluateCommitRef.current();
+  }, []);
 
   const handleGestureStart = (clientY) => {
     if (typeof clientY !== 'number') return;
@@ -415,14 +764,13 @@ export default function Calculator() {
             <span className="setting-label">Target Base Unit</span>
             <div className="pill-row">
               {BASE_UNITS.map((u) => (
-                <button
+                <FastButton
                   key={u.id}
-                  type="button"
                   className={`pill-btn ${baseUnit === u.id ? 'active' : ''}`}
-                  onClick={() => setBaseUnit(u.id)}
+                  onActivate={() => setBaseUnit(u.id)}
                 >
                   {u.label}
-                </button>
+                </FastButton>
               ))}
             </div>
           </div>
@@ -455,6 +803,7 @@ export default function Calculator() {
               onChange={(e) => {
                 lastCommittedExprRef.current = null;
                 setShowCommitError(false);
+                expressionRef.current = e.target.value;
                 setExpression(e.target.value);
               }}
               onKeyDown={(e) => {
@@ -536,7 +885,9 @@ export default function Calculator() {
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && customAssignInput.trim()) {
                         if (customAssignInput.includes('=')) {
-                          setExpression(customAssignInput.trim());
+                          const next = customAssignInput.trim();
+                          expressionRef.current = next;
+                          setExpression(next);
                           setCustomAssignInput('');
                           setIsVarPickerOpen(false);
                         } else {
@@ -551,7 +902,9 @@ export default function Calculator() {
                     onClick={() => {
                       if (!customAssignInput.trim()) return;
                       if (customAssignInput.includes('=')) {
-                        setExpression(customAssignInput.trim());
+                        const next = customAssignInput.trim();
+                        expressionRef.current = next;
+                        setExpression(next);
                         setCustomAssignInput('');
                         setIsVarPickerOpen(false);
                       } else {
@@ -610,122 +963,13 @@ export default function Calculator() {
           )}
         </div>
 
-        {/* Dedicated Woodworker Fraction Keys */}
-        <div className="fraction-bar">
-          {QUICK_FRACTIONS.map((frac) => (
-            <button
-              key={frac}
-              type="button"
-              className="frac-key"
-              onClick={() => appendToken(frac)}
-            >
-              {frac}
-            </button>
-          ))}
-        </div>
-
-        {/* Unit Input Bar */}
-        <div className="unit-bar">
-          {UNITS.map((u) => (
-            <button
-              key={u.label}
-              type="button"
-              className="unit-key"
-              onClick={() => appendToken(u.token)}
-            >
-              {u.label}
-            </button>
-          ))}
-        </div>
-
-        {/* Main Number & Operator Keypad */}
-        <div className="keypad-grid">
-          <button type="button" className="calc-key danger" onClick={handleClear}>
-            C
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('(')}>
-            (
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken(')')}>
-            )
-          </button>
-          <button type="button" className="calc-key op" onClick={handleBackspace}>
-            ⌫
-          </button>
-
-          <button type="button" className="calc-key" onClick={() => appendToken('7')}>
-            7
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('8')}>
-            8
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('9')}>
-            9
-          </button>
-          <button type="button" className="calc-key op" onClick={() => appendToken(' / ')}>
-            ÷
-          </button>
-
-          <button type="button" className="calc-key" onClick={() => appendToken('4')}>
-            4
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('5')}>
-            5
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('6')}>
-            6
-          </button>
-          <button type="button" className="calc-key op" onClick={() => appendToken(' * ')}>
-            ×
-          </button>
-
-          <button type="button" className="calc-key" onClick={() => appendToken('1')}>
-            1
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('2')}>
-            2
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('3')}>
-            3
-          </button>
-          <button type="button" className="calc-key op" onClick={() => appendToken(' - ')}>
-            −
-          </button>
-
-          <button
-            type="button"
-            className="calc-key"
-            style={{ gridColumn: 'span 2' }}
-            onClick={() => appendToken('0')}
-          >
-            0
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('.')}>
-            .
-          </button>
-          <button type="button" className="calc-key op" onClick={() => appendToken(' + ')}>
-            +
-          </button>
-
-          <button
-            type="button"
-            className="calc-key"
-            style={{ gridColumn: 'span 2' }}
-            onClick={() => appendToken(' ')}
-          >
-            and
-          </button>
-          <button type="button" className="calc-key" onClick={() => appendToken('/')}>
-            by
-          </button>
-          <button
-            type="button"
-            className="calc-key equal"
-            onClick={handleEvaluateCommit}
-          >
-            =
-          </button>
-        </div>
+        {/* Memoized Fast-Response Keypads */}
+        <CalculatorKeypads
+          onAppendToken={appendToken}
+          onClear={handleClear}
+          onBackspace={handleBackspace}
+          onEvaluateCommit={stableEvaluateCommit}
+        />
       </div>
 
       {/* Unified Docked Bottom Sheet for Notes */}
@@ -774,12 +1018,12 @@ export default function Calculator() {
 
         <div className="drawer-body">
           <div className="drawer-Subheader">
-            <span>Tap an item to use it • Tap 🏷️ Name to assign a variable</span>
+            <span>Auto-saved locally • Tap item to reuse or 🏷️ Name</span>
             {history.length > 0 && (
               <button
                 type="button"
                 className="pill-btn"
-                onClick={() => setHistory([])}
+                onClick={clearAllHistory}
               >
                 Clear All
               </button>
@@ -802,6 +1046,7 @@ export default function Calculator() {
                         if (item.varName) {
                           insertVariableIntoExpression(item.varName);
                         } else {
+                          expressionRef.current = item.expr;
                           setExpression(item.expr);
                         }
                         setIsTapeOpen(false);
@@ -846,7 +1091,7 @@ export default function Calculator() {
                       </div>
                     </div>
 
-                    {/* Part 1 Option 1: One-tap Woodworking Presets + Custom Name Input */}
+                    {/* One-tap Woodworking Presets + Custom Name Input */}
                     {isNaming && (
                       <div className="tape-naming-panel">
                         <div className="setting-label">
