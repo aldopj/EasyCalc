@@ -130,7 +130,12 @@ function writeActiveProjectId(projectId) {
   }
 }
 
-export function loadProjectFile(projectId, fallbackNotes = [], fallbackVars = {}) {
+export function loadProjectFile(
+  projectId,
+  fallbackNotes = [],
+  fallbackVars = {},
+  fallbackFreeflowNotes = ''
+) {
   try {
     const raw = localStorage.getItem(getProjectFileKey(projectId));
     if (raw !== null) {
@@ -138,7 +143,9 @@ export function loadProjectFile(projectId, fallbackNotes = [], fallbackVars = {}
       if (parsed && typeof parsed === 'object') {
         const notes = sanitizeNotes(parsed.notes);
         const variables = syncVariablesWithNotes(parsed.variables, notes);
-        return { notes, variables };
+        const freeflowNotes =
+          typeof parsed.freeflowNotes === 'string' ? parsed.freeflowNotes : '';
+        return { notes, variables, freeflowNotes };
       }
     }
   } catch {
@@ -148,13 +155,23 @@ export function loadProjectFile(projectId, fallbackNotes = [], fallbackVars = {}
   return {
     notes: safeNotes,
     variables: syncVariablesWithNotes(fallbackVars, safeNotes),
+    freeflowNotes:
+      typeof fallbackFreeflowNotes === 'string' ? fallbackFreeflowNotes : '',
   };
 }
 
-export function saveProjectFile(projectId, projectName, notes, variables) {
+export function saveProjectFile(
+  projectId,
+  projectName,
+  notes,
+  variables,
+  freeflowNotes = ''
+) {
   const now = Date.now();
   const safeNotes = sanitizeNotes(notes);
   const safeVars = syncVariablesWithNotes(variables, safeNotes);
+  const safeFreeflowNotes =
+    typeof freeflowNotes === 'string' ? freeflowNotes : '';
   const fileData = {
     id: projectId,
     name: projectName,
@@ -162,6 +179,7 @@ export function saveProjectFile(projectId, projectName, notes, variables) {
     updatedAt: now,
     notes: safeNotes,
     variables: safeVars,
+    freeflowNotes: safeFreeflowNotes,
   };
 
   try {
@@ -236,7 +254,8 @@ export function initializeProjectsState() {
       defaultProject.id,
       defaultProject.name,
       initialNotes,
-      initialVars
+      initialVars,
+      ''
     );
 
     return {
@@ -245,6 +264,7 @@ export function initializeProjectsState() {
       activeProjectData: {
         notes: initialNotes,
         variables: initialVars,
+        freeflowNotes: '',
       },
     };
   }
@@ -296,7 +316,7 @@ export function createProject(name, currentProjects) {
   const nextProjects = [...currentProjects, newProject];
   writeProjectsIndex(nextProjects);
   writeActiveProjectId(id);
-  saveProjectFile(id, cleanName, [], {});
+  saveProjectFile(id, cleanName, [], {}, '');
 
   return {
     projects: nextProjects,
@@ -304,6 +324,7 @@ export function createProject(name, currentProjects) {
     activeProjectData: {
       notes: [],
       variables: {},
+      freeflowNotes: '',
     },
   };
 }
@@ -345,7 +366,7 @@ export function deleteProject(projectId, currentProjects, currentActiveId) {
     nextProjects = [defaultProject];
     writeProjectsIndex(nextProjects);
     writeActiveProjectId(defaultProject.id);
-    saveProjectFile(defaultProject.id, defaultProject.name, [], {});
+    saveProjectFile(defaultProject.id, defaultProject.name, [], {}, '');
 
     return {
       projects: nextProjects,
@@ -353,6 +374,7 @@ export function deleteProject(projectId, currentProjects, currentActiveId) {
       activeProjectData: {
         notes: [],
         variables: {},
+        freeflowNotes: '',
       },
     };
   }

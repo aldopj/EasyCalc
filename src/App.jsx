@@ -1,8 +1,13 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import Calculator from './components/Calculator';
 import BoardFootEstimator from './components/BoardFootEstimator';
 import ReferenceChart from './components/ReferenceChart';
 import ProjectExplorerDialog from './components/ProjectExplorerDialog';
+import SettingsDialog, {
+  STORAGE_KEY_SETTINGS,
+  loadSavedSettings,
+} from './components/SettingsDialog';
+import { triggerHaptic } from './utils/haptics';
 import {
   initializeProjectsState,
   createProject,
@@ -22,6 +27,25 @@ export default function App() {
     initialProjectsState.activeProjectData
   );
   const [isExplorerOpen, setIsExplorerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  const [baseUnit, setBaseUnit] = useState(
+    () => loadSavedSettings()?.baseUnit || 'in-fractional'
+  );
+  const [precision, setPrecision] = useState(
+    () => loadSavedSettings()?.precision || 16
+  );
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY_SETTINGS,
+        JSON.stringify({ baseUnit, precision })
+      );
+    } catch {
+      // Ignore storage errors
+    }
+  }, [baseUnit, precision]);
 
   const activeProject =
     projects.find((p) => p.id === activeProjectId) || projects[0];
@@ -59,18 +83,19 @@ export default function App() {
   );
 
   const handleSaveProjectData = useCallback(
-    (notes, variables) => {
+    (notes, variables, freeflowNotes) => {
       if (!activeProject) return;
       const updatedIndex = saveProjectFile(
         activeProject.id,
         activeProject.name,
         notes,
-        variables
+        variables,
+        freeflowNotes
       );
       if (updatedIndex) {
         setProjects(updatedIndex);
       }
-      setActiveProjectData({ notes, variables });
+      setActiveProjectData({ notes, variables, freeflowNotes });
     },
     [activeProject?.id, activeProject?.name]
   );
@@ -79,7 +104,16 @@ export default function App() {
     <>
       <header className="app-header">
         <div className="header-left">
-          <div className="brand">
+          <button
+            type="button"
+            className="brand brand-settings-btn"
+            onClick={() => {
+              triggerHaptic(8);
+              setIsSettingsOpen(true);
+            }}
+            aria-label="Pocket Calipers Settings"
+            title="Open Settings"
+          >
             <svg
               className="brand-caliper-icon"
               viewBox="0 0 28 28"
@@ -134,7 +168,7 @@ export default function App() {
               />
             </svg>
             <span className="brand-title">Pocket Calipers</span>
-          </div>
+          </button>
 
           <button
             type="button"
@@ -170,8 +204,11 @@ export default function App() {
           <Calculator
             key={activeProject.id}
             projectName={activeProject.name}
+            baseUnit={baseUnit}
+            precision={precision}
             initialNotes={activeProjectData.notes}
             initialVariables={activeProjectData.variables}
+            initialFreeflowNotes={activeProjectData.freeflowNotes || ''}
             onSaveProjectData={handleSaveProjectData}
             onOpenProjectExplorer={() => setIsExplorerOpen(true)}
           />
@@ -179,6 +216,15 @@ export default function App() {
         {activeTab === 'bf' && <BoardFootEstimator />}
         {activeTab === 'chart' && <ReferenceChart />}
       </main>
+
+      <SettingsDialog
+        isOpen={isSettingsOpen}
+        baseUnit={baseUnit}
+        precision={precision}
+        onChangeBaseUnit={setBaseUnit}
+        onChangePrecision={setPrecision}
+        onClose={() => setIsSettingsOpen(false)}
+      />
 
       <ProjectExplorerDialog
         isOpen={isExplorerOpen}

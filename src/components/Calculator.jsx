@@ -1,34 +1,18 @@
-import React, { useState, useMemo, useRef, useEffect, useCallback, memo } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useRef,
+  useEffect,
+  useCallback,
+  useId,
+  memo,
+} from 'react';
 import {
   parseAndEvaluate,
   formatQuantity,
   convertDimensionlessToActiveUnit,
 } from '../utils/parser';
-
-const STORAGE_KEY_SETTINGS = 'easycalc_settings_v1';
-
-function loadSavedSettings() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY_SETTINGS);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return parsed;
-  } catch {
-    // Ignore storage read errors
-  }
-  return null;
-}
-
-const BASE_UNITS = [
-  { id: 'in-fractional', label: 'in (1/x)' },
-  { id: 'ft-in', label: 'ft & in' },
-  { id: 'in-decimal', label: 'in (dec)' },
-  { id: 'mm', label: 'mm' },
-  { id: 'cm', label: 'cm' },
-  { id: 'm', label: 'm' },
-];
-
-const PRECISIONS = [2, 4, 8, 16, 32, 64];
+import { triggerHaptic } from '../utils/haptics';
 
 const QUICK_FRACTIONS = [
   '1/2',
@@ -80,6 +64,7 @@ function FastButton({ onActivate, className, style, children, title, ariaLabel }
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     lastPointerDownRef.current = performance.now();
     e.currentTarget.setAttribute('data-pressed', 'true');
+    triggerHaptic(8);
     onActivate(e);
   };
 
@@ -96,6 +81,7 @@ function FastButton({ onActivate, className, style, children, title, ariaLabel }
     ) {
       return;
     }
+    triggerHaptic(8);
     onActivate(e);
   };
 
@@ -157,14 +143,14 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
 
       {/* Main Number & Operator Keypad */}
       <div className="keypad-grid">
-        <FastButton className="calc-key danger" onActivate={onClear}>
-          C
-        </FastButton>
         <FastButton className="calc-key" onActivate={() => onAppendToken('(')}>
           (
         </FastButton>
         <FastButton className="calc-key" onActivate={() => onAppendToken(')')}>
           )
+        </FastButton>
+        <FastButton className="calc-key danger" onActivate={onClear}>
+          C
         </FastButton>
         <FastButton className="calc-key op" onActivate={onBackspace}>
           ⌫
@@ -243,18 +229,15 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
 
 export default function Calculator({
   projectName = 'Default Project',
+  baseUnit = 'in-fractional',
+  precision = 16,
   initialNotes = [],
   initialVariables = {},
+  initialFreeflowNotes = '',
   onSaveProjectData,
   onOpenProjectExplorer,
 }) {
   const [expression, setExpression] = useState('');
-  const [baseUnit, setBaseUnit] = useState(
-    () => loadSavedSettings()?.baseUnit || 'in-fractional'
-  );
-  const [precision, setPrecision] = useState(
-    () => loadSavedSettings()?.precision || 16
-  );
 
   const [history, setHistory] = useState(() =>
     Array.isArray(initialNotes) ? initialNotes : []
@@ -264,6 +247,10 @@ export default function Calculator({
       ? initialVariables
       : {}
   );
+  const [freeflowNotes, setFreeflowNotes] = useState(() =>
+    typeof initialFreeflowNotes === 'string' ? initialFreeflowNotes : ''
+  );
+  const freeflowNotesId = useId();
 
   const [isTapeOpen, setIsTapeOpen] = useState(false);
   const [isVarPickerOpen, setIsVarPickerOpen] = useState(false);
@@ -282,42 +269,32 @@ export default function Calculator({
 
   const lastPersistedRef = useRef(null);
   if (!lastPersistedRef.current) {
-    lastPersistedRef.current = { history, variables };
+    lastPersistedRef.current = { history, variables, freeflowNotes };
   }
 
   const persistProjectData = useCallback(
-    (nextNotes, nextVars) => {
+    (nextNotes, nextVars, nextFreeflow = freeflowNotes) => {
       lastPersistedRef.current = {
         history: nextNotes,
         variables: nextVars,
+        freeflowNotes: nextFreeflow,
       };
-      onSaveProjectData?.(nextNotes, nextVars);
+      onSaveProjectData?.(nextNotes, nextVars, nextFreeflow);
     },
-    [onSaveProjectData]
+    [onSaveProjectData, freeflowNotes]
   );
 
-  // Automatically persist notes & variables whenever they change for the active project
+  // Automatically persist notes, variables & free-flow notes whenever they change for the active project
   useEffect(() => {
     if (
       lastPersistedRef.current.history === history &&
-      lastPersistedRef.current.variables === variables
+      lastPersistedRef.current.variables === variables &&
+      lastPersistedRef.current.freeflowNotes === freeflowNotes
     ) {
       return;
     }
-    persistProjectData(history, variables);
-  }, [history, variables, persistProjectData]);
-
-  // Persist unit & precision settings
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        STORAGE_KEY_SETTINGS,
-        JSON.stringify({ baseUnit, precision })
-      );
-    } catch {
-      // Ignore storage errors
-    }
-  }, [baseUnit, precision]);
+    persistProjectData(history, variables, freeflowNotes);
+  }, [history, variables, freeflowNotes, persistProjectData]);
 
   // Format stored variables using current base unit and precision
   const formattedVariablesList = useMemo(() => {
@@ -472,6 +449,7 @@ export default function Calculator({
   }, []);
 
   const insertVariableIntoExpression = useCallback((varName) => {
+    triggerHaptic(8);
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
     setExpression((prev) => {
@@ -489,6 +467,7 @@ export default function Calculator({
   const startVariableAssignment = useCallback((varName) => {
     const clean = varName.trim().replace(/\s+/g, '_');
     if (!clean) return;
+    triggerHaptic(8);
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
     setExpression((prev) => {
@@ -736,8 +715,10 @@ export default function Calculator({
     const deltaY = endY - gestureStartY.current;
 
     if (!isTapeOpen && deltaY < -35) {
+      triggerHaptic(8);
       setIsTapeOpen(true);
     } else if (isTapeOpen && deltaY > 35) {
+      triggerHaptic(8);
       setIsTapeOpen(false);
     }
     gestureStartY.current = null;
@@ -757,81 +738,31 @@ export default function Calculator({
   return (
     <div className="calc-stage">
       <div className="calc-main-scroll">
-        {/* Base Unit & Fractional Precision Selector */}
-        <div className="settings-bar">
-          <div className="setting-group">
-            <span className="setting-label">Target Base Unit</span>
-            <div className="pill-row">
-              {BASE_UNITS.map((u) => (
-                <FastButton
-                  key={u.id}
-                  className={`pill-btn ${baseUnit === u.id ? 'active' : ''}`}
-                  onActivate={() => setBaseUnit(u.id)}
-                >
-                  {u.label}
-                </FastButton>
-              ))}
-            </div>
-          </div>
-
-          <div className="setting-group">
-            <span className="setting-label">Snap To</span>
-            <select
-              aria-label="Fraction Precision"
-              className="select-input"
-              value={precision}
-              onChange={(e) => setPrecision(Number(e.target.value))}
-            >
-              {PRECISIONS.map((p) => (
-                <option key={p} value={p}>
-                  1/{p}"
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
         {/* Main Live Calculator Display with Inline Variable Slot Pill */}
         <div className="display-card">
           <div className="expr-row">
             <input
               type="text"
+              readOnly
+              inputMode="none"
               aria-label="Measurement Expression"
               className="expr-input"
               value={expression}
-              onChange={(e) => {
-                lastCommittedExprRef.current = null;
-                setShowCommitError(false);
-                expressionRef.current = e.target.value;
-                setExpression(e.target.value);
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  handleEvaluateCommit();
-                } else if (e.key === 'Backspace') {
-                  const { selectionStart, selectionEnd, value } =
-                    e.currentTarget;
-                  if (
-                    selectionStart === selectionEnd &&
-                    selectionStart === value.length
-                  ) {
-                    e.preventDefault();
-                    handleBackspace();
-                  }
-                }
-              }}
-              placeholder="Tap numbers, Pick Var, or type kerf = 1/8"
+              placeholder="Tap numbers, units, or ← Insert"
             />
             <button
               type="button"
               className={`inline-var-slot-pill ${expectsOperand ? 'ready' : ''} ${
                 isVarPickerOpen ? 'open' : ''
               }`}
-              onClick={() => setIsVarPickerOpen((prev) => !prev)}
-              title="Pick or set a named variable"
+              onClick={() => {
+                triggerHaptic(8);
+                setIsVarPickerOpen((prev) => !prev);
+              }}
+              title="Insert variable or set a named variable"
             >
-              <span>🏷️ Pick Var</span>
-              <span style={{ fontSize: '0.62rem', opacity: 0.8 }}>▾</span>
+              <span aria-hidden="true">←</span>
+              <span>Insert</span>
             </button>
           </div>
 
@@ -912,6 +843,7 @@ export default function Calculator({
                     className="pill-btn active"
                     onClick={() => {
                       if (!customAssignInput.trim()) return;
+                      triggerHaptic(8);
                       if (customAssignInput.includes('=')) {
                         const next = customAssignInput.trim();
                         expressionRef.current = next;
@@ -931,6 +863,13 @@ export default function Calculator({
           )}
 
           <div className="result-main" data-testid="calc-result">
+            <span className="result-exact-inline">
+              {!evaluation.ok && showCommitError
+                ? 'Complete the expression or tap ⌫'
+                : displayedEval.assignedVar
+                ? `Tap = to save [${displayedEval.assignedVar}] (${displayedEval.exactDec})`
+                : `Exact: ${displayedEval.exactDec}`}
+            </span>
             <span className="result-main-inner">
               {!evaluation.ok && showCommitError ? (
                 <span style={{ fontSize: '1.05rem', color: 'var(--text-muted)' }}>
@@ -947,25 +886,6 @@ export default function Calculator({
                   {displayedEval.formatted}
                 </>
               )}
-            </span>
-          </div>
-
-          <div className="result-sub">
-            <span>
-              {!evaluation.ok && showCommitError
-                ? 'Complete the expression or tap ⌫'
-                : displayedEval.assignedVar
-                ? `Tap = to save [${displayedEval.assignedVar}] (${displayedEval.exactDec})`
-                : `Exact: ${displayedEval.exactDec}`}
-            </span>
-            <span
-              className="approx-badge"
-              aria-hidden={!displayedEval.isApproximate}
-              style={{
-                visibility: displayedEval.isApproximate ? 'visible' : 'hidden',
-              }}
-            >
-              Rounded to 1/{precision}"
             </span>
           </div>
 
@@ -1003,6 +923,7 @@ export default function Calculator({
           onMouseUp={(e) => handleGestureEnd(e.clientY)}
           onClick={() => {
             if (!didDragRef.current) {
+              triggerHaptic(8);
               setIsTapeOpen((prev) => !prev);
             }
           }}
@@ -1176,6 +1097,19 @@ export default function Calculator({
                 );
               })
             )}
+          </div>
+
+          <div className="freeflow-notes-section">
+            <label htmlFor={freeflowNotesId} className="freeflow-notes-label">
+              Free-Flow Notes
+            </label>
+            <textarea
+              id={freeflowNotesId}
+              className="text-input freeflow-notes-textarea"
+              value={freeflowNotes}
+              onChange={(e) => setFreeflowNotes(e.target.value)}
+              placeholder="Jot down rough measurements, lumber notes, or reminders..."
+            />
           </div>
         </div>
       </div>
