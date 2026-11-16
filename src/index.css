@@ -112,26 +112,85 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: max(0.625rem, env(safe-area-inset-top)) 1rem 0.625rem;
+  gap: 0.5rem;
+  padding: max(0.625rem, env(safe-area-inset-top)) 0.875rem 0.625rem;
   background: rgba(24, 27, 34, 0.95);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
 }
 
-.brand {
+.header-left {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
   font-weight: 700;
-  font-size: 1.08rem;
+  font-size: 1.02rem;
   color: var(--wood-light);
   letter-spacing: 0.2px;
+  flex-shrink: 0;
+}
+
+.brand-title {
+  white-space: nowrap;
 }
 
 .brand-caliper-icon {
   width: 1.45rem;
   height: 1.45rem;
   flex-shrink: 0;
+}
+
+.project-switcher-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-width: 0;
+  max-width: 13rem;
+  background: var(--bg-card);
+  color: var(--text-main);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  flex-shrink: 1;
+  transition: background-color 0.12s ease, border-color 0.12s ease, transform 0.06s ease;
+}
+
+.project-switcher-btn:hover {
+  background: #272d3a;
+  border-color: rgba(56, 189, 248, 0.55);
+}
+
+.project-switcher-btn:active {
+  transform: scale(0.97);
+}
+
+.project-switcher-icon {
+  flex-shrink: 0;
+  font-size: 0.82rem;
+}
+
+.project-switcher-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.project-switcher-caret {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  color: var(--accent-blue);
 }
 
 .brand-badge {
@@ -154,6 +213,7 @@ body {
   font-weight: 700;
   outline: none;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
 .app-content {
@@ -619,6 +679,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   font-size: 0.78rem;
 }
 
@@ -627,7 +688,16 @@ body {
   color: var(--text-main);
   display: flex;
   align-items: center;
-  gap: 0.375rem;
+  gap: 0.325rem;
+  min-width: 0;
+}
+
+.drawer-project-name {
+  color: var(--accent-blue);
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .drawer-count-badge {
@@ -638,11 +708,13 @@ body {
   padding: 0 0.45rem;
   font-size: 0.7rem;
   font-weight: 700;
+  flex-shrink: 0;
 }
 
 .drawer-hint {
   font-size: 0.73rem;
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .tape-latest-preview {
@@ -650,6 +722,7 @@ body {
   font-family: 'SF Mono', ui-monospace, Menlo, monospace;
   font-weight: 600;
   font-size: 0.76rem;
+  flex-shrink: 0;
 }
 
 .drawer-body {
@@ -664,10 +737,25 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 0.5rem;
   padding: 0.625rem 1rem;
   font-size: 0.75rem;
   color: var(--text-muted);
   border-bottom: 1px solid var(--border-subtle);
+  flex-shrink: 0;
+}
+
+.drawer-subheader-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drawer-subheader-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
   flex-shrink: 0;
 }
 
@@ -982,4 +1070,173 @@ body {
   .calc-key {
     font-size: 1rem;
   }
+}
+
+/* Project Explorer Native Modal Dialog */
+.project-explorer-dialog {
+  width: min(26rem, calc(100vw - 1.5rem));
+  max-height: min(82dvh, 38rem);
+  margin: auto;
+  padding: 0;
+  background: #1b202c;
+  color: var(--text-main);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 0.875rem;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.8);
+  overflow: hidden;
+}
+
+.project-explorer-dialog::backdrop {
+  background-color: rgba(8, 10, 14, 0.72);
+  backdrop-filter: blur(3px);
+}
+
+.project-explorer-shell {
+  display: flex;
+  flex-direction: column;
+  max-height: min(82dvh, 38rem);
+  padding: 1rem;
+  gap: 0.75rem;
+}
+
+.project-explorer-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.project-explorer-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--wood-light);
+}
+
+.project-explorer-subtitle {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+.project-explorer-close {
+  flex-shrink: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.project-create-form {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.project-create-input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.45rem 0.625rem;
+  font-size: 0.84rem;
+}
+
+.project-create-btn {
+  white-space: nowrap;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.8rem;
+}
+
+.project-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  min-height: 0;
+  flex: 1;
+}
+
+.project-row-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 0.625rem;
+  padding: 0.5rem 0.625rem;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+.project-row-item:hover {
+  background: #272d3a;
+}
+
+.project-row-item.active {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.project-select-btn {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0;
+}
+
+.project-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.project-row-name {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-active-badge {
+  background: rgba(245, 158, 11, 0.2);
+  color: var(--wood-light);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  border-radius: 999px;
+  padding: 0.05rem 0.45rem;
+  font-size: 0.66rem;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+.project-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.project-file-badge {
+  font-family: 'SF Mono', ui-monospace, Menlo, monospace;
+  color: var(--accent-blue);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 13rem;
+}
+
+.project-note-count {
+  flex-shrink: 0;
+}
+
+.project-delete-btn {
+  flex-shrink: 0;
 }

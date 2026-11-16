@@ -5,12 +5,7 @@ import {
   convertDimensionlessToActiveUnit,
 } from '../utils/parser';
 
-const STORAGE_KEY_NOTES = 'easycalc_notes_v2';
-const STORAGE_KEY_VARIABLES = 'easycalc_variables_v2';
 const STORAGE_KEY_SETTINGS = 'easycalc_settings_v1';
-
-const DEFAULT_VARIABLES = {};
-const DEFAULT_HISTORY = [];
 
 function loadSavedSettings() {
   try {
@@ -22,76 +17,6 @@ function loadSavedSettings() {
     // Ignore storage read errors
   }
   return null;
-}
-
-function loadSavedNotes() {
-  try {
-    // Remove legacy v1 demo-seeded keys so existing installs start clean
-    localStorage.removeItem('easycalc_notes_v1');
-    const raw = localStorage.getItem(STORAGE_KEY_NOTES);
-    if (raw === null) {
-      return DEFAULT_HISTORY;
-    }
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed)) {
-      return parsed.filter(
-        (item) =>
-          item &&
-          typeof item.expr === 'string' &&
-          typeof item.result === 'string' &&
-          item.qty &&
-          typeof item.qty.value === 'number'
-      );
-    }
-  } catch {
-    // Fallback to empty if storage is unavailable or corrupted
-  }
-  return DEFAULT_HISTORY;
-}
-
-function loadSavedVariables(initialNotes) {
-  try {
-    localStorage.removeItem('easycalc_variables_v1');
-    const raw = localStorage.getItem(STORAGE_KEY_VARIABLES);
-    let baseVars = DEFAULT_VARIABLES;
-    if (raw !== null) {
-      const parsed = JSON.parse(raw);
-      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-        baseVars = parsed;
-      }
-    }
-    // Ensure any named items in notes are reflected in variables
-    const synced = { ...baseVars };
-    if (Array.isArray(initialNotes)) {
-      for (let i = initialNotes.length - 1; i >= 0; i--) {
-        const note = initialNotes[i];
-        if (note && note.varName && note.qty) {
-          const key = note.varName.toLowerCase();
-          synced[key] = {
-            name: note.varName,
-            qty: note.qty,
-            formatted: note.result,
-          };
-        }
-      }
-    }
-    return synced;
-  } catch {
-    return DEFAULT_VARIABLES;
-  }
-}
-
-function persistNotesAndVariables(notes, variables) {
-  try {
-    if (notes !== undefined) {
-      localStorage.setItem(STORAGE_KEY_NOTES, JSON.stringify(notes));
-    }
-    if (variables !== undefined) {
-      localStorage.setItem(STORAGE_KEY_VARIABLES, JSON.stringify(variables));
-    }
-  } catch {
-    // Ignore quota or private-browsing storage errors
-  }
 }
 
 const BASE_UNITS = [
@@ -316,7 +241,13 @@ const CalculatorKeypads = memo(function CalculatorKeypads({
   );
 });
 
-export default function Calculator() {
+export default function Calculator({
+  projectName = 'Default Project',
+  initialNotes = [],
+  initialVariables = {},
+  onSaveProjectData,
+  onOpenProjectExplorer,
+}) {
   const [expression, setExpression] = useState('');
   const [baseUnit, setBaseUnit] = useState(
     () => loadSavedSettings()?.baseUnit || 'in-fractional'
@@ -325,9 +256,13 @@ export default function Calculator() {
     () => loadSavedSettings()?.precision || 16
   );
 
-  const [history, setHistory] = useState(() => loadSavedNotes());
+  const [history, setHistory] = useState(() =>
+    Array.isArray(initialNotes) ? initialNotes : []
+  );
   const [variables, setVariables] = useState(() =>
-    loadSavedVariables(loadSavedNotes())
+    initialVariables && typeof initialVariables === 'object'
+      ? initialVariables
+      : {}
   );
 
   const [isTapeOpen, setIsTapeOpen] = useState(false);
@@ -345,10 +280,32 @@ export default function Calculator() {
   const expressionRef = useRef(expression);
   expressionRef.current = expression;
 
-  // Automatically persist notes & variables whenever they change
+  const lastPersistedRef = useRef(null);
+  if (!lastPersistedRef.current) {
+    lastPersistedRef.current = { history, variables };
+  }
+
+  const persistProjectData = useCallback(
+    (nextNotes, nextVars) => {
+      lastPersistedRef.current = {
+        history: nextNotes,
+        variables: nextVars,
+      };
+      onSaveProjectData?.(nextNotes, nextVars);
+    },
+    [onSaveProjectData]
+  );
+
+  // Automatically persist notes & variables whenever they change for the active project
   useEffect(() => {
-    persistNotesAndVariables(history, variables);
-  }, [history, variables]);
+    if (
+      lastPersistedRef.current.history === history &&
+      lastPersistedRef.current.variables === variables
+    ) {
+      return;
+    }
+    persistProjectData(history, variables);
+  }, [history, variables, persistProjectData]);
 
   // Persist unit & precision settings
   useEffect(() => {
@@ -563,7 +520,7 @@ export default function Calculator() {
 
     setHistory(nextHistory);
     setVariables(nextVariables);
-    persistNotesAndVariables(nextHistory, nextVariables);
+    persistProjectData(nextHistory, nextVariables);
     setNamingItemId(null);
     setCustomTapeName('');
   };
@@ -586,7 +543,7 @@ export default function Calculator() {
     }
 
     setHistory(remaining);
-    persistNotesAndVariables(remaining, nextVariables);
+    persistProjectData(remaining, nextVariables);
 
     if (namingItemId === itemId) {
       setNamingItemId(null);
@@ -601,9 +558,10 @@ export default function Calculator() {
         delete nextVariables[item.varName.toLowerCase()];
       }
     });
-    setHistory([]);
+    const emptyHistory = [];
+    setHistory(emptyHistory);
     setVariables(nextVariables);
-    persistNotesAndVariables([], nextVariables);
+    persistProjectData(emptyHistory, nextVariables);
     setNamingItemId(null);
     lastCommittedExprRef.current = null;
   };
@@ -670,7 +628,7 @@ export default function Calculator() {
     ];
 
     setHistory(nextHistory);
-    persistNotesAndVariables(nextHistory, nextVariables);
+    persistProjectData(nextHistory, nextVariables);
 
     lastCommittedExprRef.current = resultTrimmed;
     expressionRef.current = currentEval.formatted;
@@ -974,7 +932,9 @@ export default function Calculator() {
           <div className="grabber-pill" />
           <div className="drawer-lip-row">
             <span className="drawer-lip-title">
-              Notes <span className="drawer-count-badge">{history.length}</span>
+              <span>Notes ·</span>
+              <span className="drawer-project-name">{projectName}</span>
+              <span className="drawer-count-badge">{history.length}</span>
             </span>
             {!isTapeOpen && history[0] ? (
               <span className="tape-latest-preview">
@@ -991,22 +951,35 @@ export default function Calculator() {
 
         <div className="drawer-body">
           <div className="drawer-Subheader">
-            <span>Auto-saved locally • Tap item to reuse or 🏷️ Name</span>
-            {history.length > 0 && (
-              <button
-                type="button"
-                className="pill-btn"
-                onClick={clearAllHistory}
-              >
-                Clear All
-              </button>
-            )}
+            <span className="drawer-subheader-text">
+              {projectName} • Tap item to reuse or 🏷️ Name
+            </span>
+            <div className="drawer-subheader-actions">
+              {onOpenProjectExplorer && (
+                <button
+                  type="button"
+                  className="pill-btn"
+                  onClick={onOpenProjectExplorer}
+                >
+                  Projects
+                </button>
+              )}
+              {history.length > 0 && (
+                <button
+                  type="button"
+                  className="pill-btn"
+                  onClick={clearAllHistory}
+                >
+                  Clear All
+                </button>
+              )}
+            </div>
           </div>
 
           <div className="sheet-list">
             {history.length === 0 ? (
               <div className="empty-tape">
-                No saved notes yet. Tap <strong>=</strong> on the calculator to save measurements to Notes.
+                No saved notes in <strong>{projectName}</strong> yet. Tap <strong>=</strong> on the calculator to save measurements to this project.
               </div>
             ) : (
               history.map((item, idx) => {
