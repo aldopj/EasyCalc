@@ -508,10 +508,16 @@ export default function Calculator({
     lastCommittedExprRef.current = null;
     setShowCommitError(false);
     setExpression((prev) => {
-      const bracketMatch = prev.match(/(\s*\[[^\]]+\]\s*)$/);
-      const next = bracketMatch
-        ? prev.slice(0, prev.length - bracketMatch[1].length)
-        : prev.slice(0, -1);
+      const trimmedEnd = prev.trimEnd();
+      if (!trimmedEnd) {
+        expressionRef.current = '';
+        return '';
+      }
+      const bracketMatch = trimmedEnd.match(/(\[[^\]]+\])$/);
+      const removed = bracketMatch
+        ? trimmedEnd.slice(0, trimmedEnd.length - bracketMatch[1].length)
+        : trimmedEnd.slice(0, -1);
+      const next = removed.trimEnd();
       expressionRef.current = next;
       return next;
     });
