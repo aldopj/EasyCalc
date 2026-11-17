@@ -1016,17 +1016,18 @@ export default function Calculator({
                         setIsTapeOpen(false);
                       }}
                     >
-                      <div className="sheet-item-index">#{history.length - idx}</div>
                       <div className="sheet-item-body">
-                        <div>
-                          <div className="sheet-item-expr">{item.expr}</div>
+                        <div className="sheet-item-primary-row">
                           {item.varName && (
                             <span className="var-assigned-pill">
                               🏷️ {item.varName}
                             </span>
                           )}
+                          <span className="sheet-item-res">
+                            {item.varName ? `= ${item.result}` : item.result}
+                          </span>
                         </div>
-                        <div className="sheet-item-res">= {item.result}</div>
+                        <div className="sheet-item-expr">{item.expr}</div>
                       </div>
                       <div className="sheet-item-actions">
                         <button
@@ -1066,7 +1067,7 @@ export default function Calculator({
                             <button
                               key={preset}
                               type="button"
-                              className={`pill-btn ${
+                              className={`pill-btn var-preset-btn ${
                                 item.varName === preset ? 'active' : ''
                               }`}
                               onClick={() =>
